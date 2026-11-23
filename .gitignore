@@ -1,0 +1,10 @@
+# build output
+bin/
+dist/
+installer/art/
+
+# ffmpeg.exe is ~100 MB, over GitHub's file limit. Get it with tools/get-ffmpeg.ps1.
+vendor/ffmpeg/ffmpeg.exe
+
+*.tmp
+Thumbs.db
