@@ -42,7 +42,7 @@ namespace Klementina
             bar.Controls.Add(Btn(S.T("select_all"), false, () => { selected.Clear(); foreach (var p in pages) selected.Add(p); grid.Invalidate(); }));
             bar.Controls.Add(new Label { Text = S.T("organize_hint"), AutoSize = true, Margin = new Padding(12, 9, 0, 0), ForeColor = Color.FromArgb(120, 90, 70) });
 
-            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(12, 8, 12, 10), BackColor = Color.FromArgb(255, 238, 224), FlowDirection = S.Ar ? FlowDirection.LeftToRight : FlowDirection.RightToLeft };
+            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(12, 8, 12, 10), BackColor = Color.FromArgb(255, 238, 224), FlowDirection = S.Rtl ? FlowDirection.LeftToRight : FlowDirection.RightToLeft };
             footer.Controls.Add(Btn(S.T("save_copy"), true, Save));
             footer.Controls.Add(Btn(S.T("close"), false, Close));
 

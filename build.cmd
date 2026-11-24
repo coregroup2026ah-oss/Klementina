@@ -24,13 +24,16 @@ set REFS=/r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Window
  /r:"%RUNTIME%" /r:"%FW%\System.Runtime.WindowsRuntime.dll" /r:"%WRTINTEROP%" ^
  /r:"%WM%\Windows.Foundation.winmd" /r:"%WM%\Windows.Data.winmd" /r:"%WM%\Windows.Storage.winmd" /r:"%WM%\Windows.Media.winmd" /r:"%WM%\Windows.Graphics.winmd" /r:"%WM%\Windows.Globalization.winmd" /r:"%WM%\Windows.ApplicationModel.winmd" ^
  /r:vendor\zxing\zxing.dll
+rem interface languages: every lang\*.txt is embedded as resource "lang.<file>"
+set RES=
+for %%f in (lang\*.txt) do call set RES=%%RES%% /resource:"%%f",lang.%%~nxf
 set OPTS=/nologo /target:winexe /platform:anycpu /optimize+ /nowarn:1701,1702 /utf8output
 
 rem pass 1: build, then let the app draw its own icon
-"%FW%\csc.exe" %OPTS% %REFS% /out:bin\Klementina.exe src\*.cs || goto :fail
+"%FW%\csc.exe" %OPTS% %REFS% %RES% /out:bin\Klementina.exe src\*.cs || goto :fail
 bin\Klementina.exe --write-icon bin\Klementina.ico || goto :fail
 rem pass 2: rebuild with the icon embedded
-"%FW%\csc.exe" %OPTS% %REFS% /win32icon:bin\Klementina.ico /out:bin\Klementina.exe src\*.cs || goto :fail
+"%FW%\csc.exe" %OPTS% %REFS% %RES% /win32icon:bin\Klementina.ico /out:bin\Klementina.exe src\*.cs || goto :fail
 echo.
 echo Built: %~dp0bin\Klementina.exe
 exit /b 0

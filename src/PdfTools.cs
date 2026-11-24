@@ -56,7 +56,7 @@ namespace Klementina
         {
             string folder = Ops.Unique(Ops.DirOf(src), Ops.BaseName(src) + " (" + Ops.Suffix("pages") + ")", null);
             Directory.CreateDirectory(folder);
-            try { Qpdf("--split-pages " + Ops.Q(src) + " " + Ops.Q(Path.Combine(folder, (S.Ar ? "صفحة" : "page") + "-%d.pdf")), folder); }
+            try { Qpdf("--split-pages " + Ops.Q(src) + " " + Ops.Q(Path.Combine(folder, Ops.Suffix("page") + "-%d.pdf")), folder); }
             catch { Ops.TryDelete(folder); throw; }
             return folder;
         }
@@ -71,7 +71,7 @@ namespace Klementina
                 int digits = ranges.Count.ToString().Length;
                 for (int i = 0; i < ranges.Count; i++)
                 {
-                    string name = Ops.BaseName(src) + "-" + (S.Ar ? "جزء" : "part") + (i + 1).ToString().PadLeft(digits, '0') + " (" + ranges[i] + ").pdf";
+                    string name = Ops.BaseName(src) + "-" + Ops.Suffix("part") + (i + 1).ToString().PadLeft(digits, '0') + " (" + ranges[i] + ").pdf";
                     string outFile = Path.Combine(folder, name);
                     Qpdf(Ops.Q(src) + " --pages . " + ranges[i] + " -- " + Ops.Q(outFile), outFile);
                 }
@@ -286,7 +286,7 @@ namespace Klementina
             var name = cs as string;
             if (name == "/DeviceRGB") return 3;
             if (name == "/DeviceGray") return 1;
-            if (name != null && name.EndsWith(" R"))
+            if (name != null && name.EndsWith(" R", StringComparison.Ordinal))
             {
                 // indirect: usually [/ICCBased <stream>]
                 var target = Get(objects, "obj:" + name) as Dictionary<string, object>;

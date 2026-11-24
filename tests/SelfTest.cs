@@ -36,14 +36,74 @@ namespace Klementina
                 Console.WriteLine("foreground: " + Native.ClassOf(Native.GetAncestor(Native.GetForegroundWindow(), Native.GA_ROOT)));
                 return 0;
             }
-            if (args[0] == "--settings-shot") // render the settings window to a PNG
+            if (args[0] == "--lang-shots") // --lang-shots <image> <out dir>: settings window and tools wheel in every language
             {
                 Settings.Load(); Engines.Refresh();
+                Directory.CreateDirectory(args[2]);
+                var w = new WheelForm();
+                foreach (var l in S.Languages)
+                {
+                    Shot(w, args[2], "wheel-" + l[0], l[0], WheelKind.Tools, new List<string> { args[1] }, 2);
+                    var sf = new SettingsForm();
+                    sf.Show(); Application.DoEvents();
+                    using (var b = new Bitmap(sf.Width, sf.Height)) { sf.DrawToBitmap(b, new Rectangle(0, 0, sf.Width, sf.Height)); b.Save(Path.Combine(args[2], "settings-" + l[0] + ".png"), ImageFormat.Png); }
+                    sf.Close();
+                    Console.WriteLine(l[0] + ": " + S.T("set_title") + " | " + S.T("compress") + " | " + Ops.Suffix("compressed"));
+                }
+                return 0;
+            }
+            if (args[0] == "--settings-shot") // render the settings window to a PNG  [scale] [language]
+            {
+                Settings.Load(); Engines.Refresh();
+                if (args.Length > 2) SettingsForm.TestScale = float.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture);
+                if (args.Length > 3) Settings.Lang = args[3];
                 var f = new SettingsForm();
                 f.Show(); Application.DoEvents();
                 using (var b = new Bitmap(f.Width, f.Height)) { f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height)); b.Save(args[1], ImageFormat.Png); }
                 f.Close();
                 return 0;
+            }
+            if (args[0] == "--baselines") // --baselines <pdf> <out txt>: every text line of page 1 with its baseline and edges
+            {
+                Engines.Refresh();
+                var pages = PdfText.ReadExact(args[1], Path.Combine(Path.GetTempPath(), "kl-baselines-notext.pdf"));
+                var p0 = pages[0];
+                var sbx = new System.Text.StringBuilder();
+                bool fitx;
+                foreach (var l in p0.Lines.OrderByDescending(l => l.Baseline))
+                    sbx.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:F1}	{1:F1}	{2:F1}	{3:F1}	{4}	{5:F1}	{6}",
+                        p0.Y0 + p0.Height - l.Baseline, l.Left - p0.X0, l.Right - p0.X0, l.Size, string.Concat(l.Runs.Select(r => r.Text)),
+                        l.Runs.Sum(r => DocxWriter.MeasurePt(r, "Arial", l.Rtl)), DocxWriter.WidthScale(l, "Arial", out fitx)));
+                File.WriteAllText(args[2], sbx.ToString(), System.Text.Encoding.UTF8);
+                return 0;
+            }
+            if (args[0] == "--convert-all") // --convert-all <file>...: every format on the Convert wheel, outputs next to each file
+            {
+                Settings.Load(); Settings.Lang = "ar"; Engines.Refresh();
+                for (int i = 1; i < args.Length; i++)
+                {
+                    string f = args[i];
+                    foreach (var it in Catalog.Build(WheelKind.Convert, new List<string> { f }).Where(x => x.IsFormat))
+                    {
+                        if (it.Need != null && !Engines.Has(it.Need)) { Console.WriteLine("skip " + Path.GetFileName(f) + " -> " + it.Label); continue; }
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        try
+                        {
+                            var r = it.Run(new List<string> { f });
+                            Console.WriteLine((r.Errors.Count == 0 && r.Outputs.Count > 0 ? "ok   " : "FAIL ") + Path.GetFileName(f) + " -> " + it.Label + " : " +
+                                string.Join(" | ", r.Outputs.Select(o => Path.GetFileName(o) + " (" + Ops.Size(Ops.SizeOf(o)) + ")")) + " " + sw.Elapsed.TotalSeconds.ToString("0.0") + "s" +
+                                (r.Errors.Count > 0 ? "  ERR: " + string.Join("; ", r.Errors) : ""));
+                        }
+                        catch (Exception ex) { Console.WriteLine("FAIL " + Path.GetFileName(f) + " -> " + it.Label + " EXC: " + Ops.Clean(ex)); }
+                    }
+                }
+                return 0;
+            }
+            if (args[0] == "--pptx") // --pptx <pdf>: PDF → PowerPoint
+            {
+                Engines.Refresh();
+                try { Console.WriteLine("OK " + PdfOps.ToPptx(args[1], "pptx")[0]); return 0; }
+                catch (Exception ex) { Console.WriteLine(ex.ToString()); return 1; }
             }
             if (args[0] == "--ocr") // --ocr <pdf> <txt|docx>
             {

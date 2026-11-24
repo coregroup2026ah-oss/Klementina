@@ -28,56 +28,129 @@ namespace Klementina
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
-            Height = 110;
+            Height = 130;
             Cursor = Cursors.Hand;
         }
 
-        Rectangle Track { get { return new Rectangle(14, 10, Math.Max(10, Width - 28), Math.Max(10, Height - 20)); } }
+        const int RulerH = 22;
+        Rectangle Track { get { return new Rectangle(14, 8, Math.Max(10, Width - 28), Math.Max(10, Height - 8 - RulerH)); } }
         float X(double t) { var r = Track; return r.X + (float)(t / Duration * r.Width); }
         double T(int x) { var r = Track; return Math.Max(0, Math.Min(Duration, (x - r.X) / (double)r.Width * Duration)); }
+
+        public static string Clock(double t, bool tenths)
+        {
+            if (t < 0) t = 0;
+            int h = (int)(t / 3600), m = (int)(t / 60) % 60;
+            double sec = t - h * 3600 - m * 60;
+            string ss = tenths ? sec.ToString("00.0", System.Globalization.CultureInfo.InvariantCulture) : ((int)sec).ToString("00");
+            return (h > 0 ? h + ":" + m.ToString("00") : m.ToString()) + ":" + ss;
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Parent != null ? Parent.BackColor : Theme.Page);
             var r = Track;
-            using (var bg = new SolidBrush(Color.FromArgb(255, 226, 200))) g.FillRectangle(bg, r);
-            if (Thumbs.Count > 0)
+            using (var clip = Theme.Round(r, 8))
             {
-                float w = r.Width / (float)Thumbs.Count;
-                for (int i = 0; i < Thumbs.Count; i++) g.DrawImage(Thumbs[i], r.X + i * w, r.Y, w + 1, r.Height);
-            }
-            else if (Peaks != null)
-            {
-                float mid = r.Y + r.Height / 2f, bw = r.Width / (float)Peaks.Length;
-                using (var p = new Pen(Color.FromArgb(240, 96, 20), Math.Max(1f, bw * 0.6f)))
-                    for (int i = 0; i < Peaks.Length; i++)
+                using (var bg = new SolidBrush(Color.FromArgb(255, 226, 200))) g.FillPath(bg, clip);
+                var saved = g.Clip;
+                g.SetClip(clip);
+                if (Thumbs.Count > 0)
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    float w = r.Width / (float)Thumbs.Count;
+                    for (int i = 0; i < Thumbs.Count; i++)
                     {
-                        float h = Math.Max(1, Peaks[i] * r.Height * 0.46f), x = r.X + i * bw + bw / 2;
-                        g.DrawLine(p, x, mid - h, x, mid + h);
+                        // keep each frame's shape: crop the middle of it to the slot
+                        var th = Thumbs[i];
+                        float slotAspect = w / r.Height, imgAspect = th.Width / (float)th.Height;
+                        RectangleF src = imgAspect > slotAspect
+                            ? new RectangleF((th.Width - th.Height * slotAspect) / 2, 0, th.Height * slotAspect, th.Height)
+                            : new RectangleF(0, (th.Height - th.Width / slotAspect) / 2, th.Width, th.Width / slotAspect);
+                        g.DrawImage(th, new RectangleF(r.X + i * w, r.Y, w + 1, r.Height), src, GraphicsUnit.Pixel);
                     }
+                }
+                else if (Peaks != null)
+                {
+                    float mid = r.Y + r.Height / 2f, bw = r.Width / (float)Peaks.Length;
+                    using (var p = new Pen(Color.FromArgb(240, 96, 20), Math.Max(1f, bw * 0.6f)))
+                        for (int i = 0; i < Peaks.Length; i++)
+                        {
+                            float h = Math.Max(1, Peaks[i] * r.Height * 0.46f), x = r.X + i * bw + bw / 2;
+                            g.DrawLine(p, x, mid - h, x, mid + h);
+                        }
+                }
+                // outside the selection is dimmed (not in bleep mode, which has no selection)
+                if (!RangeMode)
+                    using (var dim = new SolidBrush(Color.FromArgb(165, 255, 246, 238)))
+                    {
+                        g.FillRectangle(dim, r.X, r.Y, X(Start) - r.X, r.Height);
+                        g.FillRectangle(dim, X(End), r.Y, r.Right - X(End), r.Height);
+                    }
+                foreach (var rg in Ranges)
+                    using (var rb = new SolidBrush(Color.FromArgb(130, 30, 30, 30))) g.FillRectangle(rb, X(rg[0]), r.Y, Math.Max(2, X(rg[1]) - X(rg[0])), r.Height);
+                g.Clip = saved;
             }
-            // outside the selection is dimmed (not in bleep mode, which has no selection)
-            if (!RangeMode)
-            using (var dim = new SolidBrush(Color.FromArgb(150, 255, 246, 238)))
-            {
-                g.FillRectangle(dim, r.X, r.Y, X(Start) - r.X, r.Height);
-                g.FillRectangle(dim, X(End), r.Y, r.Right - X(End), r.Height);
-            }
-            foreach (var rg in Ranges)
-                using (var rb = new SolidBrush(Color.FromArgb(120, 30, 30, 30))) g.FillRectangle(rb, X(rg[0]), r.Y, Math.Max(2, X(rg[1]) - X(rg[0])), r.Height);
+
             if (!RangeMode)
             {
-                using (var frame = new Pen(Color.FromArgb(240, 80, 10), 3)) g.DrawRectangle(frame, X(Start), r.Y, X(End) - X(Start), r.Height);
+                using (var frame = new Pen(Theme.Accent, 3))
+                using (var sel = Theme.Round(new RectangleF(X(Start), r.Y + 1.5f, Math.Max(1, X(End) - X(Start)), r.Height - 3), 6))
+                    g.DrawPath(frame, sel);
                 foreach (var t in new[] { Start, End })
-                    using (var hb = new SolidBrush(Color.FromArgb(240, 80, 10)))
+                {
+                    var hr = new RectangleF(X(t) - 6, r.Y - 2, 12, r.Height + 4);
+                    using (var hp = Theme.Round(hr, 5))
+                    using (var hb = new SolidBrush(Theme.Accent)) g.FillPath(hb, hp);
+                    float cy = r.Y + r.Height / 2f;
+                    using (var grip = new Pen(Color.White, 1.5f))
                     {
-                        g.FillRectangle(hb, X(t) - 6, r.Y, 12, r.Height);
-                        g.FillRectangle(Brushes.White, X(t) - 1, r.Y + r.Height / 2 - 10, 2, 20);
+                        g.DrawLine(grip, X(t) - 2, cy - 8, X(t) - 2, cy + 8);
+                        g.DrawLine(grip, X(t) + 2, cy - 8, X(t) + 2, cy + 8);
                     }
+                }
             }
             if (Playhead >= 0)
-                using (var ph = new Pen(Color.FromArgb(40, 40, 40), 2)) g.DrawLine(ph, X(Playhead), r.Y - 6, X(Playhead), r.Bottom + 6);
+            {
+                float px = X(Playhead);
+                using (var ph = new Pen(Color.FromArgb(40, 30, 24), 2)) g.DrawLine(ph, px, r.Y - 4, px, r.Bottom + 4);
+                using (var tri = new SolidBrush(Color.FromArgb(40, 30, 24)))
+                    g.FillPolygon(tri, new[] { new PointF(px - 5, r.Y - 8), new PointF(px + 5, r.Y - 8), new PointF(px, r.Y - 2) });
+            }
+
+            // ruler: ticks at a round step that leaves room for the labels
+            var steps = new[] { 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600 };
+            double step = steps[steps.Length - 1];
+            foreach (var s in steps) if (s / Duration * r.Width >= 70) { step = s; break; }
+            var font = SystemFonts.DefaultFont;
+            using (var tick = new Pen(Color.FromArgb(200, 170, 145)))
+                for (double t = 0; t <= Duration + 1e-6; t += step)
+                {
+                    float x = X(t);
+                    g.DrawLine(tick, x, r.Bottom + 3, x, r.Bottom + 7);
+                    string lab = Clock(t, step < 1);
+                    var sz = TextRenderer.MeasureText(lab, font);
+                    float lx = Math.Max(0, Math.Min(Width - sz.Width, x - sz.Width / 2f));
+                    TextRenderer.DrawText(g, lab, font, new Point((int)lx, r.Bottom + 7), Color.FromArgb(150, 115, 90));
+                }
+
+            // while a handle is dragged, its time floats over the strip
+            if (drag == DragKind.Start || drag == DragKind.End)
+            {
+                double t = drag == DragKind.Start ? Start : End;
+                string lab = Clock(t, true);
+                using (var f = new Font("Segoe UI Semibold", 9f))
+                {
+                    var sz = TextRenderer.MeasureText(lab, f);
+                    float bx = Math.Max(r.X, Math.Min(r.Right - sz.Width - 8, X(t) - sz.Width / 2f - 4));
+                    var box = new RectangleF(bx, r.Y + 4, sz.Width + 8, sz.Height + 2);
+                    using (var bp = Theme.Round(box, 5))
+                    using (var bb = new SolidBrush(Color.FromArgb(230, 40, 30, 24))) g.FillPath(bb, bp);
+                    TextRenderer.DrawText(g, lab, f, new Point((int)box.X + 4, (int)box.Y + 1), Color.White);
+                }
+            }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -160,19 +233,26 @@ namespace Klementina
             Ui.ApplyDirection(this);
             KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); if (e.KeyCode == Keys.Space) { TogglePlay(); e.Handled = true; } };
 
-            var header = new Label
+            var header = new Panel { Dock = DockStyle.Top, Height = 54 };
+            header.Paint += (s, e) =>
             {
-                Text = title, Dock = DockStyle.Top, Height = 50, TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 15f, FontStyle.Bold), ForeColor = Color.FromArgb(58, 36, 22), BackColor = Color.FromArgb(255, 176, 76),
+                var hr = header.ClientRectangle;
+                if (hr.Width < 1 || hr.Height < 1) return;
+                using (var gb = new System.Drawing.Drawing2D.LinearGradientBrush(hr, Theme.Warm1, Theme.Warm2, 0f)) e.Graphics.FillRectangle(gb, hr);
             };
+            header.Controls.Add(new Label
+            {
+                Text = title, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, BackColor = Color.Transparent,
+                Font = new Font("Segoe UI", 15f, FontStyle.Bold), ForeColor = Theme.Ink,
+            });
 
-            var tlPanel = new Panel { Dock = isVideo ? DockStyle.Bottom : DockStyle.Fill, Height = 130, Padding = new Padding(12, 6, 12, 6) };
+            var tlPanel = new Panel { Dock = isVideo ? DockStyle.Bottom : DockStyle.Fill, Height = 150, Padding = new Padding(12, 8, 12, 4) };
             tlPanel.Controls.Add(timeline);
             timeline.RightToLeft = RightToLeft.No; // time always runs left to right
 
             var controls = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(12, 6, 12, 6), WrapContents = true };
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(12, 8, 12, 10), BackColor = Color.FromArgb(255, 238, 224), FlowDirection = FlowDirection.RightToLeft };
-            if (S.Ar) footer.FlowDirection = FlowDirection.LeftToRight;
+            if (S.Rtl) footer.FlowDirection = FlowDirection.LeftToRight;
 
             controls.Controls.Add(Btn("▶  " + S.T(m == Mode.Trim ? "play_selection" : "play_original"), false, () => PlayRange(timeline.Start, timeline.End, path)));
             if (m == Mode.Trim)
@@ -234,12 +314,32 @@ namespace Klementina
             Shown += (s, e) => { Ui.ForceForeground(Handle); LoadVisuals(); };
         }
 
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // trim window only, and not while a slider has the keys (the channel volumes use the arrows)
+            if (mode == Mode.Trim && !(ActiveControl is TrackBar) && !(ActiveControl is TextBoxBase))
+            {
+                double ph = timeline.Playhead >= 0 ? timeline.Playhead : timeline.Start;
+                double step = (keyData & Keys.Shift) != 0 ? 1.0 : 0.1;
+                switch (keyData & ~Keys.Shift)
+                {
+                    case Keys.I: timeline.Start = Math.Min(ph, timeline.End - 0.05); timeline.Invalidate(); UpdateLabels(); return true;
+                    case Keys.O: timeline.End = Math.Max(ph, timeline.Start + 0.05); timeline.Invalidate(); UpdateLabels(); return true;
+                    case Keys.Left: SeekTo(Math.Max(0, ph - step)); return true;
+                    case Keys.Right: SeekTo(Math.Min(info.Duration, ph + step)); return true;
+                    case Keys.Home: SeekTo(timeline.Start); return true;
+                    case Keys.End: SeekTo(timeline.End); return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         Button Btn(string text, bool primary, Action click)
         {
-            var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(110, 34), FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 0, 8, 0) };
-            b.BackColor = primary ? Color.FromArgb(240, 96, 20) : Color.White;
-            b.ForeColor = primary ? Color.White : Color.FromArgb(58, 36, 22);
-            b.FlatAppearance.BorderSize = primary ? 0 : 1;
+            var b = Theme.MakeButton(text, primary);
+            b.AutoSize = true;
+            b.MinimumSize = new Size(110, 36);
+            b.Margin = new Padding(0, 0, 8, 0);
             b.Click += (s, e) => click();
             return b;
         }
@@ -319,11 +419,21 @@ namespace Klementina
                     }
                     if (isVideo)
                     {
-                        int count = 14;
-                        string pattern = Path.Combine(tmp, "t%02d.jpg");
-                        Ops.Ffmpeg("-i " + Ops.Q(path) + " -vf \"fps=" + (count / info.Duration).ToString("0.#####", Ops.Inv) + ",scale=-2:96\" -frames:v " + count + " -q:v 5 " + Ops.Q(pattern), null);
-                        foreach (var f in Directory.GetFiles(tmp, "t*.jpg").OrderBy(x => x))
-                            using (var ms = new MemoryStream(File.ReadAllBytes(f))) thumbs.Add(new Bitmap(ms));
+                        // one quick seek per frame, a few at a time: a long film no longer has to be decoded end to end
+                        int count = 16;
+                        var frames = new Bitmap[count];
+                        System.Threading.Tasks.Parallel.For(0, count, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 4 }, i =>
+                        {
+                            try
+                            {
+                                double at = (i + 0.5) * info.Duration / count;
+                                string f = Path.Combine(tmp, "t" + i.ToString("00") + ".jpg");
+                                Ops.Ffmpeg("-ss " + at.ToString("0.###", Ops.Inv) + " -i " + Ops.Q(path) + " -frames:v 1 -vf scale=-2:110 -q:v 4 " + Ops.Q(f), f);
+                                using (var ms = new MemoryStream(File.ReadAllBytes(f))) frames[i] = new Bitmap(ms);
+                            }
+                            catch { }
+                        });
+                        thumbs.AddRange(frames.Where(fr => fr != null));
                     }
                 }
                 catch { }

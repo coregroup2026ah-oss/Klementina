@@ -79,11 +79,11 @@ namespace Klementina
             s = s.Trim();
             var n = Numbers(s);
             if (n.Count == 0) return 0;
-            if (s.EndsWith("%")) return relativeTo * n[0] / 100;
-            if (s.EndsWith("pt")) return n[0] * 4 / 3.0;
-            if (s.EndsWith("mm")) return n[0] * 96 / 25.4;
-            if (s.EndsWith("cm")) return n[0] * 96 / 2.54;
-            if (s.EndsWith("in")) return n[0] * 96;
+            if (s.EndsWith("%", StringComparison.Ordinal)) return relativeTo * n[0] / 100;
+            if (s.EndsWith("pt", StringComparison.Ordinal)) return n[0] * 4 / 3.0;
+            if (s.EndsWith("mm", StringComparison.Ordinal)) return n[0] * 96 / 25.4;
+            if (s.EndsWith("cm", StringComparison.Ordinal)) return n[0] * 96 / 2.54;
+            if (s.EndsWith("in", StringComparison.Ordinal)) return n[0] * 96;
             return n[0];
         }
 
@@ -156,7 +156,7 @@ namespace Klementina
             if (rgb.Success)
             {
                 var parts = rgb.Groups[1].Value.Split(',').Select(p => p.Trim()).ToList();
-                Func<string, byte> ch = p => (byte)Math.Max(0, Math.Min(255, p.EndsWith("%") ? Numbers(p)[0] * 2.55 : Numbers(p)[0]));
+                Func<string, byte> ch = p => (byte)Math.Max(0, Math.Min(255, p.EndsWith("%", StringComparison.Ordinal) ? Numbers(p)[0] * 2.55 : Numbers(p)[0]));
                 byte a = parts.Count > 3 ? (byte)(Numbers(parts[3])[0] * 255) : (byte)255;
                 return WM.Color.FromArgb(a, ch(parts[0]), ch(parts[1]), ch(parts[2]));
             }
@@ -190,7 +190,7 @@ namespace Klementina
                     double o = (op != null ? Numbers(op).DefaultIfEmpty(1).First() : 1) * opacity;
                     c.A = (byte)(c.A * o);
                     string off = Attr(stop, "offset") ?? "0";
-                    double offset = off.EndsWith("%") ? Numbers(off)[0] / 100 : Numbers(off).DefaultIfEmpty(0).First();
+                    double offset = off.EndsWith("%", StringComparison.Ordinal) ? Numbers(off)[0] / 100 : Numbers(off).DefaultIfEmpty(0).First();
                     stops.Add(new WM.GradientStop(c, offset));
                 }
                 bool user = Attr(g, "gradientUnits") == "userSpaceOnUse";

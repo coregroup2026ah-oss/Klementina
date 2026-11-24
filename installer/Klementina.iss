@@ -1,5 +1,5 @@
 ; Installer for Klementina. Build with: installer\build-setup.cmd  (needs Inno Setup 6.7+)
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.0"
 #define Root ".."
 #ifndef FfmpegDir
   #define FfmpegDir Root + "\vendor\ffmpeg"
@@ -10,7 +10,10 @@ AppId={{8F3C2A51-6B1E-4C7D-9A2E-4B6D1F0C9E21}
 AppName=كلمنتينة Klementina
 AppVersion={#AppVersion}
 AppVerName=كلمنتينة Klementina {#AppVersion}
-AppPublisher=Klementina
+AppPublisher=Bayder Technology
+AppCopyright=© 2026 Bayder Technology
+VersionInfoCompany=Bayder Technology
+VersionInfoVersion={#AppVersion}
 DefaultDirName={localappdata}\Programs\Klementina
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest

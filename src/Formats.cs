@@ -13,6 +13,10 @@ namespace Klementina
     /// EPUB and Markdown conversions, plus PDF → PPTX/XLSX/EPUB/MD and documents → EPUB/MD.
     static class Formats
     {
+        // .NET Framework keeps only 15 regex patterns parsed; the Markdown/HTML conversions use far more, so without
+        // a bigger cache every call re-parses its pattern
+        static Formats() { if (Regex.CacheSize < 200) Regex.CacheSize = 200; }
+
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
         const RegexOptions RX = RegexOptions.IgnoreCase | RegexOptions.Singleline;
 
@@ -24,12 +28,44 @@ namespace Klementina
             s = Regex.Replace(s, @"<(head|script|style|title)[^>]*>.*?</\1>", "", RX);
             s = Regex.Replace(s, @"<!--.*?-->", "", RX);
             s = Regex.Replace(s, @"\r?\n", " ");
+            // tables first, as real Markdown tables (a header row, the |---| line, one line per row): cell contents
+            // are flattened to one line, so the paragraphs Word puts in cells can't break the table apart
+            var tables = new List<string>();
+            s = Regex.Replace(s, @"<table[^>]*>(.*?)</table>", m =>
+            {
+                var rows = new List<List<string>>();
+                foreach (Match tr in Regex.Matches(m.Groups[1].Value, @"<tr[^>]*>(.*?)</tr>", RX))
+                {
+                    var cells = new List<string>();
+                    foreach (Match td in Regex.Matches(tr.Groups[1].Value, @"<t([dh])[^>]*>(.*?)</t\1>", RX))
+                    {
+                        string c = td.Groups[2].Value;
+                        c = Regex.Replace(c, @"<(strong|b)(\s[^>]*)?>(.*?)</\1>", x => x.Groups[3].Value.Trim().Length == 0 ? x.Groups[3].Value : "**" + x.Groups[3].Value.Trim() + "**", RX);
+                        c = Regex.Replace(c, @"<[^>]+>", " ");
+                        c = WebUtility.HtmlDecode(c).Replace('\u00A0', ' ').Replace("|", "\\|");
+                        cells.Add(Regex.Replace(c, @"\s+", " ").Trim());
+                    }
+                    if (cells.Count > 0) rows.Add(cells);
+                }
+                if (rows.Count == 0) return " ";
+                int cols = rows.Max(r => r.Count);
+                var md = new StringBuilder();
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var r = rows[i];
+                    while (r.Count < cols) r.Add("");
+                    md.Append("| ").Append(string.Join(" | ", r)).Append(" |\n");
+                    if (i == 0) md.Append("|").Append(string.Concat(Enumerable.Repeat(" --- |", cols))).Append("\n");
+                }
+                tables.Add(md.ToString());
+                return "\n\n\u0001T" + (tables.Count - 1) + "\u0001\n\n";
+            }, RX);
             s = Regex.Replace(s, @"<h([1-6])[^>]*>(.*?)</h\1>", m => "\n\n" + new string('#', int.Parse(m.Groups[1].Value)) + " " + m.Groups[2].Value.Trim() + "\n\n", RX);
             s = Regex.Replace(s, @"<br\s*/?>", "  \n", RX);
             s = Regex.Replace(s, @"<li[^>]*>(.*?)</li>", m => "\n- " + m.Groups[1].Value.Trim(), RX);
             s = Regex.Replace(s, @"<(strong|b)(\s[^>]*)?>(.*?)</\1>", m => m.Groups[3].Value.Trim().Length == 0 ? m.Groups[3].Value : "**" + m.Groups[3].Value.Trim() + "**", RX);
             s = Regex.Replace(s, @"<(em|i)(\s[^>]*)?>(.*?)</\1>", m => m.Groups[3].Value.Trim().Length == 0 ? m.Groups[3].Value : "*" + m.Groups[3].Value.Trim() + "*", RX);
-            s = Regex.Replace(s, @"<a\s[^>]*href=""([^""]*)""[^>]*>(.*?)</a>", m => m.Groups[1].Value.StartsWith("#") ? m.Groups[2].Value : "[" + m.Groups[2].Value + "](" + m.Groups[1].Value + ")", RX);
+            s = Regex.Replace(s, @"<a\s[^>]*href=""([^""]*)""[^>]*>(.*?)</a>", m => m.Groups[1].Value.StartsWith("#", StringComparison.Ordinal) ? m.Groups[2].Value : "[" + m.Groups[2].Value + "](" + m.Groups[1].Value + ")", RX);
             s = Regex.Replace(s, @"</(p|div|ul|ol|table|blockquote|section|article)>", "\n\n", RX);
             s = Regex.Replace(s, @"</tr>", "\n", RX);
             s = Regex.Replace(s, @"</t[dh]>", " | ", RX);
@@ -38,6 +74,7 @@ namespace Klementina
             var lines = s.Split('\n').Select(l => Regex.Replace(l, @"[ \t]+", " ").Trim());
             s = string.Join("\n", lines);
             s = Regex.Replace(s, @"\n{3,}", "\n\n");
+            s = Regex.Replace(s, "\u0001T(\\d+)\u0001", m => tables[int.Parse(m.Groups[1].Value)].TrimEnd('\n'));
             return s.Trim() + "\n";
         }
 
@@ -227,9 +264,9 @@ namespace Klementina
 
         static string PdfMarkdown(string src)
         {
-            var pages = PdfOps.OcrPages(src);
-            if (pages.All(p => p.Count == 0)) throw new Exception(S.Ar ? "لم يُعثر على نص في الملف" : "No text found in this PDF");
-            return string.Join("\n\n---\n\n", pages.Select(p => string.Join("  \n", p.Select(l => Regex.Replace(l, @"^([#>*\-+]|\d+\.)", @"\$1")))));
+            var pages = PdfOps.ReadPages(src);
+            if (pages.All(p => p.Blocks.Count == 0)) throw new Exception(S.T("no_text"));
+            return PdfText.Markdown(pages);
         }
 
         public static List<string> PdfTo(string src, string ext)
@@ -241,17 +278,17 @@ namespace Klementina
                 case "epub": WriteEpub(dest, Ops.BaseName(src), PdfMarkdown(src)); break;
                 case "xlsx":
                 {
-                    var rows = new List<List<string>>();
-                    PdfOps.OcrPages(src, rows);
-                    string tmp = Ops.TempDir();
-                    try
+                    // a sheet per page: table rows keep their cells, other text one line per row (no Excel needed)
+                    var sheets = new List<XlsxWriter.Sheet>();
+                    int pn = 0;
+                    foreach (var page in PdfOps.ReadPages(src))
                     {
-                        string tsv = Path.Combine(tmp, Ops.BaseName(src) + ".tsv");
-                        File.WriteAllLines(tsv, rows.Select(r => string.Join("\t", r.Select(c => c.Replace('\t', ' ')))), Utf8);
-                        string made = OfficeOps.Excel(tsv, "xlsx")[0];
-                        File.Move(made, dest);
+                        var sheet = new XlsxWriter.Sheet { Name = S.F("page_n", ++pn), Header = false };
+                        foreach (var b in PdfText.Flatten(page.Blocks).Where(x => x.Kind != PdfText.Kind.Image))
+                            sheet.Rows.Add(b.Kind == PdfText.Kind.Row ? b.Cells : new List<string> { b.Text });
+                        sheets.Add(sheet);
                     }
-                    finally { Ops.TryDelete(tmp); }
+                    XlsxWriter.Write(dest, sheets);
                     break;
                 }
                 case "pptx": OfficeOps.PdfToPptx(src, dest); break;

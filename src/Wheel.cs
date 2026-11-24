@@ -400,7 +400,7 @@ namespace Klementina
                         g.DrawString(item.Glyph ?? "", gf, tb, new RectangleF(cx - 20 * sc, cy - 26 * sc, 40 * sc, 26 * sc), sf);
                     using (var f = new Font("Segoe UI Semibold", 10.5f * sc, GraphicsUnit.Pixel))
                     {
-                        if (S.Ar) sf.FormatFlags |= StringFormatFlags.DirectionRightToLeft;
+                        if (S.Rtl) sf.FormatFlags |= StringFormatFlags.DirectionRightToLeft;
                         g.DrawString(item.Label, f, tb, new RectangleF(cx - boxW / 2, cy + 1 * sc, boxW, 30 * sc), sf);
                     }
                 }
@@ -476,7 +476,7 @@ namespace Klementina
         void DrawChips(Graphics g)
         {
             var kinds = new[] { WheelKind.Convert, WheelKind.Tools, WheelKind.Actions };
-            if (S.Ar) Array.Reverse(kinds);
+            if (S.Rtl) Array.Reverse(kinds);
             using (var fKey = new Font("Segoe UI", 10f * sc, FontStyle.Bold, GraphicsUnit.Pixel))
             using (var fName = new Font("Segoe UI Semibold", 11f * sc, GraphicsUnit.Pixel))
             {
@@ -508,7 +508,7 @@ namespace Klementina
                     using (var sf = new StringFormat { LineAlignment = StringAlignment.Center })
                     {
                         float inner = x + 9 * sc;
-                        if (S.Ar)
+                        if (S.Rtl)
                         {
                             g.DrawString(name, fName, nb, new RectangleF(inner, y, widths[i] - kw - 18 * sc, h), sf);
                             g.DrawString(keyText, fKey, b, new RectangleF(x + widths[i] - 9 * sc - kw, y, kw + 2, h), sf);

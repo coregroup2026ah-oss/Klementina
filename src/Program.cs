@@ -121,7 +121,7 @@ namespace Klementina
 
         void BuildMenu()
         {
-            var menu = new ContextMenuStrip { RightToLeft = S.Ar ? RightToLeft.Yes : RightToLeft.No };
+            var menu = new ContextMenuStrip { RightToLeft = S.Rtl ? RightToLeft.Yes : RightToLeft.No };
             menu.Items.Add(S.T("tray_help"), null, (s, e) => ShowHelp());
             menu.Items.Add(S.T("tray_settings"), null, (s, e) => ShowSettings());
             pauseItem = new ToolStripMenuItem(S.T("tray_pause"), null, (s, e) => TogglePause()) { Checked = paused };
@@ -257,7 +257,7 @@ namespace Klementina
         {
             using (var owner = Ui.Owner())
             {
-                var opts = S.Ar ? MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign : 0;
+                var opts = S.Rtl ? MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign : 0;
                 if (need == "ffmpeg")
                 {
                     if (MessageBox.Show(owner, S.T("need_ffmpeg_long"), "FFmpeg", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, opts) == DialogResult.Yes)
@@ -346,12 +346,12 @@ namespace Klementina
             var logo = new PictureBox { Image = Art.Fruit(72), Size = new Size(72, 72), Location = new Point(24, 20), SizeMode = PictureBoxSizeMode.CenterImage };
             var title = new Label
             {
-                Text = S.Ar ? "كلمنتينة" : "Klementina", Font = new Font("Segoe UI", 22f, FontStyle.Bold),
+                Text = S.T("app_name"), Font = new Font("Segoe UI", 22f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(232, 96, 16), AutoSize = true, Location = new Point(108, 18),
             };
             var sub = new Label
             {
-                Text = S.Ar ? "حوّل ملفاتك بلمسة وأنت تسحبها" : "Convert files right where you drag them",
+                Text = S.T("tagline"),
                 ForeColor = Color.FromArgb(110, 80, 60), AutoSize = true, Location = new Point(112, 64),
             };
             string body = string.Format(S.T("help_body"), Settings.KeyLabel(Settings.KeyConvert), Settings.KeyLabel(Settings.KeyTools), Settings.KeyLabel(Settings.KeyActions));
@@ -368,106 +368,166 @@ namespace Klementina
         }
     }
 
+    /// Settings: a warm header with the fruit, then cards (general, keyboard, output, engines) and Save / Cancel.
     class SettingsForm : Form
     {
         public event Action Saved;
 
+        const int Col = 362, Gap = 16, Margin0 = 20, Top0 = 108;
+        internal static float TestScale;     // self-test: pretend a high-DPI screen
+
+        static Label Text0(string t, int x, int y, int w = 0, int h = 0)
+        {
+            var l = new Label { Text = t, Location = new Point(x, y), ForeColor = Theme.Ink, BackColor = Theme.Card };
+            if (w > 0) { l.AutoSize = false; l.Size = new Size(w, h > 0 ? h : 24); l.TextAlign = ContentAlignment.MiddleLeft; }
+            else l.AutoSize = true;
+            return l;
+        }
+
+        static ComboBox Combo(int x, int y, int w)
+        {
+            return new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(x, y), Width = w, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Theme.Ink };
+        }
+
+        /// A switch with its label; clicking the label flips the switch too.
+        static ToggleSwitch Toggle(Control card, string text, bool value, int y, int height = 36)
+        {
+            var t = new ToggleSwitch { Location = new Point(18, y + (height - 26) / 2), Checked = value, AccessibleName = text };
+            var l = Text0(text, 76, y, Col - 94, height);
+            l.Cursor = Cursors.Hand;
+            l.Click += (s, e) => { t.Focus(); t.Checked = !t.Checked; };
+            card.Controls.Add(t);
+            card.Controls.Add(l);
+            return t;
+        }
+
         public SettingsForm()
         {
+            SuspendLayout();
             Text = S.T("set_title");
-            Font = new Font("Segoe UI", 10f);
-            AutoScaleMode = AutoScaleMode.Font;
+            Font = Theme.Body;
+            AutoScaleMode = AutoScaleMode.None;   // scaled by hand below (WinForms autoscale misplaces mirrored Arabic layouts)
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(560, 512);
+            ClientSize = new Size(Margin0 * 2 + Col * 2 + Gap, 566);
+            BackColor = Theme.Page;
             Icon = Art.AppIcon(32);
             Ui.ApplyDirection(this);
 
-            int y = 18;
-            Func<string, Label> label = t => { var l = new Label { Text = t, AutoSize = true, Location = new Point(20, y + 4) }; Controls.Add(l); return l; };
+            var version = typeof(SettingsForm).Assembly.GetName().Version;
+            var header = Theme.Header(S.T("set_title"), S.T("app_name") + " " + version.Major + "." + version.Minor + "." + version.Build + "  ·  " + S.T("made_by"));
+            int x1 = Margin0, x2 = Margin0 + Col + Gap;
 
-            label(S.T("set_lang"));
-            var lang = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(200, y), Width = 160 };
-            lang.Items.AddRange(new object[] { "العربية", "English" });
-            lang.SelectedIndex = Settings.Lang == "en" ? 1 : 0;
-            Controls.Add(lang);
-            y += 44;
+            // ---- general ----
+            var general = new CardPanel(S.T("sec_general")) { Location = new Point(x1, Top0), Size = new Size(Col, 182) };
+            general.Controls.Add(Text0(S.T("set_lang"), 18, 56));
+            var lang = Combo(Col - 18 - 180, 52, 180);
+            lang.Items.AddRange(S.Languages.Select(l => (object)l[1]).ToArray());
+            lang.SelectedIndex = Math.Max(0, Array.FindIndex(S.Languages, l => l[0] == Settings.Lang));
+            general.Controls.Add(lang);
+            var drag = Toggle(general, S.T("set_drag"), Settings.DragEnabled, 90, 44);
+            var startup = Toggle(general, S.T("set_startup"), Settings.StartWithWindows, 136);
 
-            var drag = new CheckBox { Text = S.T("set_drag"), Checked = Settings.DragEnabled, AutoSize = true, Location = new Point(20, y) };
-            Controls.Add(drag); y += 32;
-            var hk = new CheckBox { Text = S.T("set_hotkey"), Checked = Settings.HotkeyEnabled, AutoSize = true, Location = new Point(20, y) };
-            Controls.Add(hk); y += 34;
-            label(S.T("set_hotkey_letter"));
-            var letter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(240, y), Width = 120 };
-            letter.Items.AddRange(Settings.HotkeyLetters.Select(l => (object)("Ctrl+Alt+" + l)).ToArray());
-            letter.SelectedIndex = Math.Max(0, Array.IndexOf(Settings.HotkeyLetters, Settings.HotkeyLetter));
-            Controls.Add(letter); y += 40;
-            var startup = new CheckBox { Text = S.T("set_startup"), Checked = Settings.StartWithWindows, AutoSize = true, Location = new Point(20, y) };
-            Controls.Add(startup); y += 44;
-
-            var keyNames = new[] { "shift", "ctrl", "alt" };
-            Func<string, string, ComboBox> keyRow = (name, current) =>
-            {
-                label(name);
-                var c = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(200, y), Width = 160 };
-                c.Items.AddRange(keyNames.Select(Settings.KeyLabel).Cast<object>().ToArray());
-                c.SelectedIndex = Math.Max(0, Array.IndexOf(keyNames, current));
-                Controls.Add(c);
-                y += 36;
-                return c;
-            };
-            var kc = keyRow(S.T("set_keys") + " · " + S.T("convert"), Settings.KeyConvert);
-            var kt = keyRow(S.T("set_keys") + " · " + S.T("tools"), Settings.KeyTools);
-            var ka = keyRow(S.T("set_keys") + " · " + S.T("actions"), Settings.KeyActions);
-            y += 8;
-
-            label(S.T("set_quality"));
-            var q = new NumericUpDown { Minimum = 30, Maximum = 100, Value = Settings.JpegQuality, Location = new Point(200, y), Width = 80 };
-            Controls.Add(q); y += 40;
-
-            label(S.T("set_ffmpeg"));
-            var ff = new TextBox { Text = Settings.FfmpegPath, Location = new Point(200, y), Width = 230 };
-            var browse = new Button { Text = S.T("set_browse"), Location = new Point(438, y - 1), Width = 100, Height = 28 };
+            // ---- output ----
+            var output = new CardPanel(S.T("sec_output")) { Location = new Point(x1, Top0 + 182 + 14), Size = new Size(Col, 178) };
+            output.Controls.Add(Text0(S.T("set_quality"), 18, 56));
+            var qValue = Text0(Settings.JpegQuality.ToString(), Col - 18 - 40, 56, 40);
+            qValue.TextAlign = ContentAlignment.MiddleRight;
+            qValue.Font = new Font("Segoe UI Semibold", 10f);
+            qValue.ForeColor = Theme.Accent;
+            var q = new TrackBar { Minimum = 30, Maximum = 100, Value = Math.Max(30, Math.Min(100, Settings.JpegQuality)), TickStyle = TickStyle.None, AutoSize = false, Height = 30, Location = new Point(140, 52), Width = Col - 140 - 64, BackColor = Theme.Card };
+            q.ValueChanged += (s, e) => qValue.Text = q.Value.ToString();
+            output.Controls.AddRange(new Control[] { q, qValue });
+            output.Controls.Add(Text0(S.T("set_ffmpeg"), 18, 98));
+            var ff = new TextBox { Text = Settings.FfmpegPath, Location = new Point(18, 126), Width = Col - 36 - 112, BorderStyle = BorderStyle.FixedSingle };
+            var browse = Theme.MakeButton(S.T("set_browse"), false);
+            browse.Size = new Size(104, 30);
+            browse.Location = new Point(Col - 18 - 104, 124);
             browse.Click += (s, e) =>
             {
                 using (var d = new OpenFileDialog { Filter = "ffmpeg.exe|ffmpeg.exe", FileName = "ffmpeg.exe" })
                     if (d.ShowDialog(this) == DialogResult.OK) ff.Text = d.FileName;
             };
-            Controls.Add(ff); Controls.Add(browse); y += 44;
+            output.Controls.AddRange(new Control[] { ff, browse });
 
-            Func<bool, string> yn = b => b ? "✓ " + S.T("found") : "✗ " + S.T("missing");
-            var status = new Label
+            // ---- keyboard ----
+            var keyboard = new CardPanel(S.T("sec_keyboard")) { Location = new Point(x2, Top0), Size = new Size(Col, 222) };
+            var hk = Toggle(keyboard, S.T("set_hotkey"), Settings.HotkeyEnabled, 48, 44);
+            keyboard.Controls.Add(Text0(S.T("set_hotkey_letter"), 18, 104));
+            var letter = Combo(Col - 18 - 130, 100, 130);
+            letter.Items.AddRange(Settings.HotkeyLetters.Select(l => (object)("Ctrl+Alt+" + l)).ToArray());
+            letter.SelectedIndex = Math.Max(0, Array.IndexOf(Settings.HotkeyLetters, Settings.HotkeyLetter));
+            letter.Enabled = hk.Checked;
+            hk.CheckedChanged += (s, e) => letter.Enabled = hk.Checked;
+            keyboard.Controls.Add(letter);
+
+            var keyNames = new[] { "shift", "ctrl", "alt" };
+            int kw = (Col - 36 - 2 * 10) / 3;
+            Func<int, string, string, ComboBox> keyCol = (i, name, current) =>
             {
-                AutoSize = false, Location = new Point(20, y), Size = new Size(520, 50), ForeColor = Color.DimGray,
-                Text = S.T("set_status") + ":  FFmpeg " + yn(Engines.Ffmpeg != null) + "   ·   Word " + yn(Engines.Word) +
-                       "   ·   Excel " + yn(Engines.Excel) + "   ·   PowerPoint " + yn(Engines.PowerPoint) + "   ·   Edge " + yn(Engines.Edge != null),
+                int kx = 18 + i * (kw + 10);
+                var l = Text0(name, kx, 146, kw, 22);
+                l.ForeColor = Theme.Muted;
+                keyboard.Controls.Add(l);
+                var c = Combo(kx, 172, kw);
+                c.Items.AddRange(keyNames.Select(Settings.KeyLabel).Cast<object>().ToArray());
+                c.SelectedIndex = Math.Max(0, Array.IndexOf(keyNames, current));
+                keyboard.Controls.Add(c);
+                return c;
             };
-            Controls.Add(status);
+            var kc = keyCol(0, S.T("convert"), Settings.KeyConvert);
+            var kt = keyCol(1, S.T("tools"), Settings.KeyTools);
+            var ka = keyCol(2, S.T("actions"), Settings.KeyActions);
 
-            var save = new Button { Text = S.T("set_save"), Size = new Size(110, 34), Location = new Point(310, 462), DialogResult = DialogResult.None };
-            var cancel = new Button { Text = S.T("set_cancel"), Size = new Size(110, 34), Location = new Point(430, 462) };
+            // ---- engines ----
+            var engines = new CardPanel(S.T("set_status")) { Location = new Point(x2, Top0 + 222 + 14), Size = new Size(Col, 138) };
+            var chips = new FlowLayoutPanel { Location = new Point(18, 50), Size = new Size(Col - 36, 76), BackColor = Theme.Card, WrapContents = true };
+            chips.Controls.Add(new StatusChip("FFmpeg", Engines.Ffmpeg != null));
+            chips.Controls.Add(new StatusChip("Word", Engines.Word));
+            chips.Controls.Add(new StatusChip("Excel", Engines.Excel));
+            chips.Controls.Add(new StatusChip("PowerPoint", Engines.PowerPoint));
+            chips.Controls.Add(new StatusChip("qpdf", Engines.Qpdf != null));
+            chips.Controls.Add(new StatusChip("Edge", Engines.Edge != null));
+            engines.Controls.Add(chips);
+
+            // ---- footer ----
+            var footer = new Panel { Dock = DockStyle.Bottom, Height = 66, BackColor = Theme.FooterBack };
+            var save = Theme.MakeButton(S.T("set_save"), true);
+            var cancel = Theme.MakeButton(S.T("set_cancel"), false);
+            save.Location = new Point(ClientSize.Width - Margin0 - save.Width * 2 - 10, 14);
+            cancel.Location = new Point(ClientSize.Width - Margin0 - cancel.Width, 14);
             cancel.Click += (s, e) => Close();
             save.Click += (s, e) =>
             {
                 var picks = new[] { kc.SelectedIndex, kt.SelectedIndex, ka.SelectedIndex };
                 if (picks.Distinct().Count() != 3) { MessageBox.Show(this, S.T("set_dup_keys"), Text); return; }
-                Settings.Lang = lang.SelectedIndex == 1 ? "en" : "ar";
+                Settings.Lang = S.Languages[Math.Max(0, lang.SelectedIndex)][0];
                 Settings.DragEnabled = drag.Checked;
                 Settings.HotkeyEnabled = hk.Checked;
-                Settings.HotkeyLetter = Settings.HotkeyLetters[letter.SelectedIndex];
+                Settings.HotkeyLetter = Settings.HotkeyLetters[Math.Max(0, letter.SelectedIndex)];
                 Settings.KeyConvert = keyNames[kc.SelectedIndex];
                 Settings.KeyTools = keyNames[kt.SelectedIndex];
                 Settings.KeyActions = keyNames[ka.SelectedIndex];
-                Settings.JpegQuality = (int)q.Value;
+                Settings.JpegQuality = q.Value;
                 Settings.FfmpegPath = ff.Text.Trim();
                 try { Settings.StartWithWindows = startup.Checked; } catch { }
                 Settings.Save();
                 if (Saved != null) Saved();
                 Close();
             };
-            Controls.Add(save); Controls.Add(cancel);
+            footer.Controls.Add(save);
+            footer.Controls.Add(cancel);
+
+            Controls.AddRange(new Control[] { general, output, keyboard, engines, footer, header });
             AcceptButton = save; CancelButton = cancel;
+            ActiveControl = save;      // no blue selection sitting in the first box
+            // the coordinates above are 96-DPI pixels: scale them to the screen once, before the window exists (fonts
+            // are in points and already follow the DPI)
+            float k = TestScale > 0 ? TestScale : Native.ScaleAt(Cursor.Position);
+            if (k > 1.01f) Scale(new SizeF(k, k));
+            ResumeLayout(false);
+            PerformLayout();
         }
     }
 }

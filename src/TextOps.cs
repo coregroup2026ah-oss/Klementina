@@ -12,6 +12,10 @@ namespace Klementina
 {
     static class TextOps
     {
+        // .NET Framework keeps only 15 regex patterns parsed; the Markdown/HTML conversions use far more, so without
+        // a bigger cache every call re-parses its pattern
+        static TextOps() { if (Regex.CacheSize < 200) Regex.CacheSize = 200; }
+
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
 
         const string Css =
@@ -23,10 +27,19 @@ namespace Klementina
             "table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:4px 10px;unicode-bidi:plaintext}th{background:#fbefe4}" +
             "img{max-width:100%}hr{border:0;border-top:1px solid #ddd}a{color:#d9600f}";
 
-        static string Page(string title, string body)
+        /// A complete page. A mostly-Arabic body makes the whole page right to left (tables too, with their first
+        /// column on the right), in fonts that draw Arabic well.
+        internal static string Page(string title, string body)
         {
-            return "<!doctype html>\n<html dir=\"auto\"><head><meta charset=\"utf-8\"><title>" + WebUtility.HtmlEncode(title) +
-                   "</title><style>" + Css + "</style></head><body>\n" + body + "\n</body></html>\n";
+            string text = Regex.Replace(body, "<[^>]+>", " ");
+            int ar = text.Count(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFEFF'));
+            int lat = text.Count(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
+            bool rtl = ar > lat;
+            if (rtl) body = Regex.Replace(body, "<table(?![^>]*\\bdir=)", "<table dir=\"rtl\"");
+            string head = rtl ? "<html dir=\"rtl\" lang=\"ar\">" : "<html dir=\"auto\">";
+            string css = rtl ? Css + "body{font-family:'Segoe UI','Arial',Tahoma,sans-serif}table{margin-inline-start:0}" : Css;
+            return "<!doctype html>\n" + head + "<head><meta charset=\"utf-8\"><title>" + WebUtility.HtmlEncode(title) +
+                   "</title><style>" + css + "</style></head><body>\n" + body + "\n</body></html>\n";
         }
 
         static string RenderHtml(string src)
@@ -86,7 +99,7 @@ namespace Klementina
         {
             string dest = Ops.Out(src, ext);
             string e = Catalog.Ext(src);
-            if (e == "md" || e == "markdown")
+            if (e == "md" || e == "markdown" || (e == "txt" && (ext == "docx" || ext == "pdf")))
             {
                 string tmpDir = Ops.TempDir();
                 try
@@ -120,7 +133,7 @@ namespace Klementina
             foreach (var raw in lines)
             {
                 string line = raw.TrimEnd();
-                if (line.TrimStart().StartsWith("```"))
+                if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
                 {
                     flushPara(); closeList();
                     o.Append(inCode ? "</code></pre>\n" : "<pre><code>");
@@ -141,7 +154,7 @@ namespace Klementina
                     continue;
                 }
                 if (Regex.IsMatch(line, @"^\s*([-*_])(\s*\1){2,}\s*$")) { flushPara(); closeList(); o.Append("<hr>\n"); continue; }
-                if (line.StartsWith(">"))
+                if (line.StartsWith(">", StringComparison.Ordinal))
                 {
                     flushPara(); closeList();
                     string qt = line.TrimStart('>', ' ');
@@ -159,7 +172,7 @@ namespace Klementina
                     o.Append("<li" + Dir(lt) + ">").Append(Inline(lt)).Append("</li>\n");
                     continue;
                 }
-                if (line.Contains("|") && line.Trim().StartsWith("|"))
+                if (line.Contains("|") && line.Trim().StartsWith("|", StringComparison.Ordinal))
                 {
                     flushPara(); closeList();
                     if (Regex.IsMatch(line, @"^\s*\|?[\s:\-|]+\|?\s*$")) continue; // separator row
@@ -237,6 +250,57 @@ namespace Klementina
 
         static char SepOf(string path) { return Catalog.Ext(path) == "tsv" ? '\t' : DetectCsvSep(path); }
 
+        /// A text file in UTF-8 (with or without a BOM, or UTF-16 with one), or else in the PC's own code page (Arabic
+        /// Windows-1256 from older Excel and Notepad).
+        public static string ReadText(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            if (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
+                return File.ReadAllText(path);
+            try { return new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF'); }
+            catch (DecoderFallbackException) { return Encoding.Default.GetString(bytes); }
+        }
+
+        /// CSV / TSV → XLSX without Excel.
+        public static List<string> CsvToXlsx(string src, string ext)
+        {
+            string dest = Ops.Out(src, "xlsx");
+            var sheet = new XlsxWriter.Sheet { Name = Ops.BaseName(src), Rows = ParseDelimited(ReadText(src), SepOf(src)) };
+            XlsxWriter.Write(dest, new List<XlsxWriter.Sheet> { sheet });
+            return new List<string> { dest };
+        }
+
+        /// CSV / TSV → PDF: the table laid out as a page (right to left for Arabic) and printed.
+        public static List<string> CsvToPdf(string src, string ext)
+        {
+            string dest = Ops.Out(src, "pdf");
+            string tmpDir = Ops.TempDir();
+            try
+            {
+                string html = Path.Combine(tmpDir, "table.html");
+                File.WriteAllText(html, Page(Ops.BaseName(src), CsvTable(src)), Utf8);
+                HtmlFileToPdf(html, dest);
+                if (!File.Exists(dest) && Engines.Word) OfficeOps.WordSave(html, dest, "pdf", false);
+                if (!File.Exists(dest)) throw new Exception("PDF needs Microsoft Edge or Word");
+            }
+            finally { Ops.TryDelete(tmpDir); }
+            return new List<string> { dest };
+        }
+
+        static string CsvTable(string src)
+        {
+            var rows = ParseDelimited(ReadText(src), SepOf(src));
+            var sb = new StringBuilder("<table>\n");
+            for (int i = 0; i < rows.Count; i++)
+            {
+                string tag = i == 0 ? "th" : "td";
+                sb.Append("<tr>");
+                foreach (var c in rows[i]) sb.Append("<" + tag + ">").Append(WebUtility.HtmlEncode(c)).Append("</" + tag + ">");
+                sb.Append("</tr>\n");
+            }
+            return sb.Append("</table>").ToString();
+        }
+
         static char DetectCsvSep(string path)
         {
             string first = File.ReadLines(path).FirstOrDefault() ?? "";
@@ -245,7 +309,7 @@ namespace Klementina
 
         public static List<string> CsvTsv(string src, string ext)
         {
-            var rows = ParseDelimited(File.ReadAllText(src), SepOf(src));
+            var rows = ParseDelimited(ReadText(src), SepOf(src));
             string dest = Ops.Out(src, ext);
             var sb = new StringBuilder();
             foreach (var r in rows)
@@ -262,18 +326,8 @@ namespace Klementina
 
         public static List<string> CsvToHtml(string src, string ext)
         {
-            var rows = ParseDelimited(File.ReadAllText(src), SepOf(src));
-            var sb = new StringBuilder("<table>\n");
-            for (int i = 0; i < rows.Count; i++)
-            {
-                string tag = i == 0 ? "th" : "td";
-                sb.Append("<tr>");
-                foreach (var c in rows[i]) sb.Append("<" + tag + ">").Append(WebUtility.HtmlEncode(c)).Append("</" + tag + ">");
-                sb.Append("</tr>\n");
-            }
-            sb.Append("</table>");
             string dest = Ops.Out(src, "html");
-            File.WriteAllText(dest, Page(Ops.BaseName(src), sb.ToString()), Utf8);
+            File.WriteAllText(dest, Page(Ops.BaseName(src), CsvTable(src)), Utf8);
             return new List<string> { dest };
         }
 
@@ -390,7 +444,7 @@ namespace Klementina
         {
             var r = new OpResult();
             string dest = files.Count == 1 ? DestFor(files[0], "zip")
-                : Ops.Unique(Ops.DirOf(files[0]), S.Ar ? "ملفات" : "Archive", "zip");
+                : Ops.Unique(Ops.DirOf(files[0]), Ops.Suffix("Archive"), "zip");
             using (var zip = ZipFile.Open(dest, ZipArchiveMode.Create))
             {
                 foreach (var f in files)

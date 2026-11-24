@@ -53,17 +53,17 @@ namespace Klementina
 
             var footer = new Panel { Dock = DockStyle.Bottom, Height = 60, Padding = new Padding(16, 10, 16, 10), BackColor = Color.FromArgb(255, 238, 224) };
             saveButton = MakeButton(S.T("save_copy"), true);
-            saveButton.Dock = S.Ar ? DockStyle.Left : DockStyle.Right;
+            saveButton.Dock = S.Rtl ? DockStyle.Left : DockStyle.Right;
             saveButton.Click += (s, e) => Save();
             resetButton = MakeButton(S.T("reset"), false);
-            resetButton.Dock = S.Ar ? DockStyle.Right : DockStyle.Left;
+            resetButton.Dock = S.Rtl ? DockStyle.Right : DockStyle.Left;
             resetButton.Click += (s, e) => ResetAll();
             footer.Controls.Add(saveButton);
             footer.Controls.Add(resetButton);
 
             side = new FlowLayoutPanel
             {
-                Dock = S.Ar ? DockStyle.Left : DockStyle.Right, Width = sideWidth, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+                Dock = S.Rtl ? DockStyle.Left : DockStyle.Right, Width = sideWidth, FlowDirection = FlowDirection.TopDown, WrapContents = false,
                 AutoScroll = true, Padding = new Padding(14, 12, 14, 12), BackColor = Panel1,
             };
             canvas = new Canvas { Dock = DockStyle.Fill };
@@ -95,7 +95,7 @@ namespace Klementina
         protected Label AddSection(string text)
         {
             var l = new Label { Text = text, AutoSize = false, Width = SideInner, Height = 30, Font = new Font("Segoe UI", 11f, FontStyle.Bold), ForeColor = Accent, TextAlign = ContentAlignment.BottomLeft, Margin = new Padding(0, 8, 0, 2) };
-            if (S.Ar) l.TextAlign = ContentAlignment.BottomRight;
+            if (S.Rtl) l.TextAlign = ContentAlignment.BottomRight;
             side.Controls.Add(l);
             return l;
         }

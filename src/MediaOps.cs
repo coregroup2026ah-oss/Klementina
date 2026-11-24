@@ -17,8 +17,8 @@ namespace Klementina
             {
                 case "mp4":
                 case "mov":
-                case "m4v": return "-vf " + Even + " -c:v libx264 -preset medium -crf 22 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart";
-                case "mkv": return "-vf " + Even + " -c:v libx264 -preset medium -crf 22 -pix_fmt yuv420p -c:a aac -b:a 192k";
+                case "m4v": return "-vf " + Even + " -c:v libx264 -preset fast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart";
+                case "mkv": return "-vf " + Even + " -c:v libx264 -preset fast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 192k";
                 case "webm": return "-c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 -c:a libopus -b:a 128k";
                 case "avi": return "-c:v mpeg4 -q:v 3 -c:a libmp3lame -q:a 3";
                 case "wmv": return "-c:v wmv2 -q:v 3 -c:a wmav2 -b:a 192k";
@@ -59,7 +59,7 @@ namespace Klementina
             string ext = VideoExt(src);
             string dest = Ops.Out(src, ext, "cropped");
             int w = r.Width - r.Width % 2, h = r.Height - r.Height % 2;
-            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf crop=" + w + ":" + h + ":" + r.X + ":" + r.Y + " -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -c:a copy " + Ops.Q(dest), dest);
+            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf crop=" + w + ":" + h + ":" + r.X + ":" + r.Y + " -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a copy " + Ops.Q(dest), dest);
             return dest;
         }
 
@@ -111,7 +111,7 @@ namespace Klementina
         {
             string ext = VideoExt(src);
             string dest = Ops.Out(src, ext, "720p");
-            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf \"scale=-2:'min(720,ih)'\" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -c:a aac -b:a 160k " + Ops.Q(dest), dest);
+            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf \"scale=-2:'min(720,ih)'\" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a aac -b:a 160k " + Ops.Q(dest), dest);
             return dest;
         }
 
@@ -126,7 +126,7 @@ namespace Klementina
         {
             string ext = VideoExt(src);
             string dest = Ops.Out(src, ext, "rotated");
-            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf transpose=1 -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -c:a copy " + Ops.Q(dest), dest);
+            Ops.Ffmpeg("-i " + Ops.Q(src) + " -vf transpose=1 -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a copy " + Ops.Q(dest), dest);
             return dest;
         }
 
@@ -142,9 +142,28 @@ namespace Klementina
         {
             string ext = Catalog.Ext(src);
             string dest = Ops.Out(src, ext, "trim");
-            string range = " -ss " + start + (string.IsNullOrEmpty(end) ? "" : " -to " + end);
-            Ops.Ffmpeg("-i " + Ops.Q(src) + range + " " + Codecs(ext) + " " + Ops.Q(dest), dest);
+            // seek on the input (fast: no decoding the part before the cut; still frame-exact because the clip is
+            // re-encoded), then keep the selection's length
+            double s0 = Seconds(start), e0 = string.IsNullOrEmpty(end) ? -1 : Seconds(end);
+            string range = s0 >= 0 && (e0 < 0 || e0 > s0)
+                ? "-ss " + s0.ToString("0.###", Ops.Inv) + " -i " + Ops.Q(src) + (e0 > 0 ? " -t " + (e0 - s0).ToString("0.###", Ops.Inv) : "")
+                : "-i " + Ops.Q(src) + " -ss " + start + (string.IsNullOrEmpty(end) ? "" : " -to " + end);
+            Ops.Ffmpeg(range + " " + Codecs(ext) + " " + Ops.Q(dest), dest);
             return dest;
+        }
+
+        /// "75", "1:15", "0:01:15.5" → seconds; -1 when it isn't a time.
+        static double Seconds(string t)
+        {
+            if (string.IsNullOrEmpty(t)) return -1;
+            double total = 0;
+            foreach (var part in t.Trim().Split(':'))
+            {
+                double v;
+                if (!double.TryParse(part, System.Globalization.NumberStyles.Float, Ops.Inv, out v)) return -1;
+                total = total * 60 + v;
+            }
+            return total;
         }
 
         public static OpResult CompressAudio(List<string> files)
@@ -279,7 +298,7 @@ namespace Klementina
                 }
             }
             filter.Append(concat).AppendFormat(video ? "concat=n={0}:v=1:a=1[v][a]" : "concat=n={0}:v=0:a=1[a]", files.Count);
-            string maps = video ? "-map \"[v]\" -map \"[a]\" -c:v libx264 -preset medium -crf 21 -c:a aac -b:a 160k -movflags +faststart"
+            string maps = video ? "-map \"[v]\" -map \"[a]\" -c:v libx264 -preset fast -crf 21 -c:a aac -b:a 160k -movflags +faststart"
                                 : "-map \"[a]\" " + (ext == "wav" ? "-c:a pcm_s16le" : "-c:a aac -b:a 192k");
             Ops.Ffmpeg(inputs + "-filter_complex \"" + filter + "\" " + maps + " " + Ops.Q(dest), dest);
             var r = new OpResult();
@@ -296,7 +315,7 @@ namespace Klementina
             string folder = Ops.Unique(Ops.DirOf(src), Ops.BaseName(src) + " (" + Ops.Suffix("parts") + ")", null);
             Directory.CreateDirectory(folder);
             double seg = info.Duration / parts;
-            string pattern = Path.Combine(folder, (S.Ar ? "جزء" : "part") + "-%02d." + ext);
+            string pattern = Path.Combine(folder, Ops.Suffix("part") + "-%02d." + ext);
             try
             {
                 Ops.Ffmpeg("-i " + Ops.Q(src) + " -map 0 -c copy -f segment -segment_time " + seg.ToString("0.###", Ops.Inv) +

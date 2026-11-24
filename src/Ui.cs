@@ -311,8 +311,8 @@ namespace Klementina
 
         public static void ApplyDirection(Form f)
         {
-            f.RightToLeft = S.Ar ? RightToLeft.Yes : RightToLeft.No;
-            f.RightToLeftLayout = S.Ar;
+            f.RightToLeft = S.Rtl ? RightToLeft.Yes : RightToLeft.No;
+            f.RightToLeftLayout = S.Rtl;
         }
     }
 
@@ -564,6 +564,13 @@ namespace Klementina
                     {
                         g.DrawString("حوّل ملفاتك بلمسة وأنت تسحبها", f, tb, new RectangleF(0, h * 0.62f + 78 * u, w, 20 * u), sf);
                         g.DrawString("Convert files where you drag them", f, tb, new RectangleF(0, h * 0.62f + 96 * u, w, 20 * u), sf);
+                    }
+                    // the maker, quietly at the foot of the panel
+                    using (var f = new Font("Segoe UI", 9.5f * u, GraphicsUnit.Pixel))
+                    using (var tb = new SolidBrush(Color.FromArgb(175, 255, 236, 218)))
+                    {
+                        g.DrawString("بواسطة بيدر للتكنولوجيا", f, tb, new RectangleF(0, h - 40 * u, w, 16 * u), sf);
+                        g.DrawString("by Bayder Technology", f, tb, new RectangleF(0, h - 24 * u, w, 16 * u), sf);
                     }
                 }
             }

@@ -121,9 +121,9 @@ namespace Klementina
                         Fmt(l, same, e.ToUpperInvariant(), e, "ffmpeg", MediaOps.Convert, true);
                     break;
                 case Cat.Pdf:
-                    Fmt(l, same, "DOCX", "docx", "word", PdfOps.ToText, true);
-                    Fmt(l, same, "PPTX", "pptx", "ppt", Formats.PdfTo, true);
-                    Fmt(l, same, "XLSX", "xlsx", "excel", Formats.PdfTo, true);
+                    Fmt(l, same, "DOCX", "docx", null, PdfOps.ToText, true);                  // exact copy
+                    Fmt(l, same, "PPTX", "pptx", null, PdfOps.ToPptx, true);                 // editable slides, no PowerPoint needed
+                    Fmt(l, same, "XLSX", "xlsx", null, Formats.PdfTo, true);                 // no Excel needed
                     Fmt(l, same, "EPUB", "epub", null, Formats.PdfTo, true);
                     Fmt(l, same, "MD", "md", null, Formats.PdfTo, true);
                     Fmt(l, same, "TXT", "txt", null, PdfOps.ToText, true);
@@ -155,8 +155,8 @@ namespace Klementina
                 case Cat.Csv:
                     if (same != "tsv") Fmt(l, same, "TSV", "tsv", null, TextOps.CsvTsv);
                     if (same != "csv") Fmt(l, same, "CSV", "csv", null, TextOps.CsvTsv);
-                    Fmt(l, same, "XLSX", "xlsx", "excel", OfficeOps.Excel, true);
-                    Fmt(l, same, "PDF", "pdf", "excel", OfficeOps.Excel, true);
+                    Fmt(l, same, "XLSX", "xlsx", null, TextOps.CsvToXlsx);                    // no Excel needed
+                    Fmt(l, same, "PDF", "pdf", null, TextOps.CsvToPdf, true);
                     Fmt(l, same, "ODS", "ods", "excel", OfficeOps.Excel, true);
                     Fmt(l, same, "HTML", "html", null, TextOps.CsvToHtml);
                     break;

@@ -10,6 +10,9 @@ if not exist "%RUNTIME%" set RUNTIME=%FW%\System.Runtime.dll
 set WRTINTEROP=%RA%\Facades\System.Runtime.InteropServices.WindowsRuntime.dll
 if not exist "%WRTINTEROP%" set WRTINTEROP=%FW%\System.Runtime.InteropServices.WindowsRuntime.dll
 if not exist bin mkdir bin
+rem interface languages: every lang\*.txt is embedded as resource "lang.<file>"
+set RES=
+for %%f in (lang\*.txt) do call set RES=%%RES%% /resource:"%%f",lang.%%~nxf
 copy /y vendor\zxing\zxing.dll bin\ >nul
 if not exist bin\qpdf mkdir bin\qpdf
 xcopy /y /d /q vendor\qpdf\* bin\qpdf\ >nul
@@ -22,5 +25,5 @@ xcopy /y /d /q vendor\ffmpeg\* bin\ffmpeg\ >nul
  /r:"%RUNTIME%" /r:"%FW%\System.Runtime.WindowsRuntime.dll" /r:"%WRTINTEROP%" ^
  /r:"%WM%\Windows.Foundation.winmd" /r:"%WM%\Windows.Data.winmd" /r:"%WM%\Windows.Storage.winmd" /r:"%WM%\Windows.Media.winmd" /r:"%WM%\Windows.Graphics.winmd" /r:"%WM%\Windows.Globalization.winmd" /r:"%WM%\Windows.ApplicationModel.winmd" ^
  /r:vendor\zxing\zxing.dll ^
- /out:bin\SelfTest.exe src\*.cs tests\SelfTest.cs || exit /b 1
+ %RES% /out:bin\SelfTest.exe src\*.cs tests\SelfTest.cs || exit /b 1
 bin\SelfTest.exe %*

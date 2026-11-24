@@ -148,14 +148,21 @@ namespace Klementina
             { "frame", "لقطة" }, { "normalized", "موحد" }, { "mono", "أحادي" }, { "pages", "صفحات" },
             { "slides", "شرائح" }, { "parts", "أجزاء" }, { "collage", "كولاج" },
             { "bleeped", "مطنن" }, { "channels", "قنوات" }, { "cropped", "مقصوص الأبعاد" }, { "tagged", "معدل البيانات" },
+            { "page", "صفحة" }, { "part", "جزء" }, { "Archive", "ملفات" },
             { "edited", "معدل" }, { "annotated", "مع رسم" }, { "redacted", "مخفي" }, { "bg", "بخلفية" }, { "organized", "مرتب" },
         };
 
-        /// Names added to output files ("photo-compressed.jpg" / "photo-مضغوط.jpg") follow the app language.
+        /// Names added to output files ("photo-compressed.jpg" / "photo-مضغوط.jpg") follow the app language:
+        /// Arabic from the table above, other languages from "sfx.<key>" in their language file, else English.
         public static string Suffix(string key)
         {
             string ar;
-            return S.Ar && arSuffix.TryGetValue(key, out ar) ? ar : key;
+            if (S.Ar) return arSuffix.TryGetValue(key, out ar) ? ar : key;
+            if (Settings.Lang == "en") return key;
+            string t = S.TryT("sfx." + key);
+            if (t == null) return key;
+            foreach (char c in Path.GetInvalidFileNameChars()) t = t.Replace(c, ' ');
+            return t.Trim().Length > 0 ? t.Trim() : key;
         }
 
         public static string Unique(string dir, string baseName, string ext)

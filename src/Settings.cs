@@ -7,15 +7,19 @@ namespace Klementina
 {
     static class Settings
     {
-        // First run: Arabic when Windows is in Arabic or an Arabic keyboard is installed (many Arabic speakers run
-        // English Windows), English otherwise. Afterwards whatever the user picked in Settings.
+        // First run: the Windows display language when Klementina has it; otherwise Arabic when an Arabic keyboard is
+        // installed (many Arabic speakers run English Windows); otherwise English. Afterwards the user's pick in Settings.
         public static string Lang = DefaultLang();
 
         static string DefaultLang()
         {
             try
             {
-                if (System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar") return "ar";
+                var ui = System.Globalization.CultureInfo.CurrentUICulture;
+                string two = ui.TwoLetterISOLanguageName;
+                if (two == "zh")
+                    return ui.Name.Contains("Hant") || ui.Name.EndsWith("TW", StringComparison.Ordinal) || ui.Name.EndsWith("HK", StringComparison.Ordinal) || ui.Name.EndsWith("MO", StringComparison.Ordinal) ? "zh-TW" : "zh";
+                if (two != "en" && S.IsLanguage(two)) return two;
                 foreach (System.Windows.Forms.InputLanguage il in System.Windows.Forms.InputLanguage.InstalledInputLanguages)
                     if (il.Culture.TwoLetterISOLanguageName == "ar") return "ar";
             }
@@ -46,7 +50,7 @@ namespace Klementina
                     if (i > 0) d[line.Substring(0, i).Trim()] = line.Substring(i + 1).Trim();
                 }
                 string v;
-                if (d.TryGetValue("lang", out v)) Lang = v == "en" ? "en" : "ar";
+                if (d.TryGetValue("lang", out v)) Lang = S.IsLanguage(v) ? v : "ar";
                 if (d.TryGetValue("drag", out v)) DragEnabled = v == "1";
                 if (d.TryGetValue("hotkey", out v)) HotkeyEnabled = v == "1";
                 if (d.TryGetValue("hotkey_letter", out v) && System.Array.IndexOf(HotkeyLetters, v) >= 0) HotkeyLetter = v;

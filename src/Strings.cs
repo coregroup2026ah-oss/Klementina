@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Klementina
 {
@@ -230,9 +231,16 @@ namespace Klementina
             { "set_ffmpeg", new[] { "مسار FFmpeg", "FFmpeg path" } },
             { "set_browse", new[] { "استعراض…", "Browse…" } },
             { "set_status", new[] { "الأدوات المتوفرة", "Available engines" } },
+            { "sec_general", new[] { "عام", "General" } },
+            { "sec_keyboard", new[] { "لوحة المفاتيح", "Keyboard" } },
+            { "sec_output", new[] { "الملفات الناتجة", "Output" } },
             { "set_save", new[] { "حفظ", "Save" } },
             { "set_hotkey_letter", new[] { "حرف الاختصار مع Ctrl+Alt", "Shortcut letter with Ctrl+Alt" } },
             { "set_cancel", new[] { "إلغاء", "Cancel" } },
+            { "app_name", new[] { "كلمنتينة", "Klementina" } },
+            { "tagline", new[] { "حوّل ملفاتك بلمسة وأنت تسحبها", "Convert files right where you drag them" } },
+            { "no_text", new[] { "لم يُعثر على نص في الملف", "No text found in this PDF" } },
+            { "made_by", new[] { "بواسطة بيدر للتكنولوجيا", "by Bayder Technology" } },
             { "set_dup_keys", new[] { "يجب أن يكون لكل عجلة مفتاح مختلف.", "Each wheel needs a different key." } },
             { "found", new[] { "موجود", "found" } },
             { "missing", new[] { "غير موجود", "not found" } },
@@ -260,13 +268,79 @@ namespace Klementina
             { "help_close", new[] { "فهمت", "Got it" } },
         };
 
-        public static bool Ar { get { return Settings.Lang != "en"; } }
+        /// Interface languages: code and name in that language. Arabic and English are built in (the table above);
+        /// every other language is a lang\<code>.txt file embedded in the exe, one "key = text" per line. A missing
+        /// key falls back to English, so a partial translation still works.
+        public static readonly string[][] Languages =
+        {
+            new[] { "ar", "العربية" }, new[] { "en", "English" }, new[] { "fr", "Français" }, new[] { "es", "Español" },
+            new[] { "de", "Deutsch" }, new[] { "pt", "Português (Brasil)" }, new[] { "it", "Italiano" }, new[] { "nl", "Nederlands" },
+            new[] { "tr", "Türkçe" }, new[] { "fa", "فارسی" }, new[] { "ur", "اردو" }, new[] { "hi", "हिन्दी" },
+            new[] { "bn", "বাংলা" }, new[] { "id", "Bahasa Indonesia" }, new[] { "ms", "Bahasa Melayu" }, new[] { "ru", "Русский" },
+            new[] { "uk", "Українська" }, new[] { "pl", "Polski" }, new[] { "cs", "Čeština" }, new[] { "ro", "Română" },
+            new[] { "el", "Ελληνικά" }, new[] { "he", "עברית" }, new[] { "zh", "简体中文" }, new[] { "zh-TW", "繁體中文" },
+            new[] { "ja", "日本語" }, new[] { "ko", "한국어" }, new[] { "vi", "Tiếng Việt" }, new[] { "th", "ไทย" },
+            new[] { "sv", "Svenska" }, new[] { "sw", "Kiswahili" },
+        };
+
+        static readonly HashSet<string> rtlLanguages = new HashSet<string> { "ar", "fa", "ur", "he" };
+
+        public static bool IsLanguage(string code) { return code != null && Languages.Any(l => l[0] == code); }
+
+        /// The interface is in Arabic (Arabic-only touches such as Arabic file-name words).
+        public static bool Ar { get { return Settings.Lang == "ar"; } }
+
+        /// The interface reads right to left (Arabic, Persian, Urdu, Hebrew): mirrors layouts and menus.
+        public static bool Rtl { get { return rtlLanguages.Contains(Settings.Lang); } }
+
+        static string loadedCode;
+        static Dictionary<string, string> loaded;
+
+        /// Texts of an embedded language file ("lang.<code>.txt"); empty when there is none.
+        public static Dictionary<string, string> LoadLanguage(string code)
+        {
+            var d = new Dictionary<string, string>();
+            using (var st = typeof(S).Assembly.GetManifestResourceStream("lang." + code + ".txt"))
+            {
+                if (st == null) return d;
+                using (var r = new System.IO.StreamReader(st, System.Text.Encoding.UTF8))
+                {
+                    string line;
+                    while ((line = r.ReadLine()) != null)
+                    {
+                        line = line.Trim();
+                        if (line.Length == 0 || line[0] == '#') continue;
+                        int eq = line.IndexOf('=');
+                        if (eq <= 0) continue;
+                        d[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim().Replace("\\n", "\n");
+                    }
+                }
+            }
+            return d;
+        }
+
+        static Dictionary<string, string> Extra()
+        {
+            string code = Settings.Lang;
+            if (code == "ar" || code == "en") return null;
+            if (loadedCode != code) { loaded = LoadLanguage(code); loadedCode = code; }
+            return loaded;
+        }
+
+        /// A text in the current language; also used for words inside file names ("sfx.<key>").
+        public static string TryT(string key)
+        {
+            var extra = Extra();
+            string text;
+            if (extra != null && extra.TryGetValue(key, out text)) return text;
+            string[] v;
+            if (map.TryGetValue(key, out v)) return Ar ? v[0] : v[1];
+            return null;
+        }
 
         public static string T(string key)
         {
-            string[] v;
-            if (!map.TryGetValue(key, out v)) return key;
-            return (Ar ? v[0] : v[1]).Replace("§HK§", Settings.HotkeyLetter);
+            return (TryT(key) ?? key).Replace("§HK§", Settings.HotkeyLetter);
         }
 
         public static string F(string key, params object[] args)
